@@ -1,0 +1,19 @@
+# Dev Environment - Example Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+aws_region = "ap-northeast-2"
+
+# VPC Configuration
+vpc_cidr             = "10.0.0.0/16"
+availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+
+# Database Configuration
+database_name     = "devfortune"
+database_username = "devfortune_admin"
+database_password = "CHANGE_ME_TO_STRONG_PASSWORD"  # Replace with secure password
+
+# Container Image Tags
+frontend_image_tag = "latest"
+backend_image_tag  = "latest"

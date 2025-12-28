@@ -1,0 +1,26 @@
+# Production Environment - Example Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+aws_region = "ap-northeast-2"
+
+# VPC Configuration (Different from dev/staging)
+vpc_cidr             = "10.1.0.0/16"
+availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
+public_subnet_cidrs  = ["10.1.1.0/24", "10.1.2.0/24"]
+private_subnet_cidrs = ["10.1.11.0/24", "10.1.12.0/24"]
+
+# Database Configuration
+database_name     = "devfortune"
+database_username = "devfortune_admin"
+database_password = "CHANGE_ME_TO_VERY_STRONG_PASSWORD"  # Replace with strong password
+
+# Container Image Tags (Use specific versions in production)
+frontend_image_tag = "v1.0.0"
+backend_image_tag  = "v1.0.0"
+
+# Domain & SSL (Required for production)
+domain_name         = "devfortune.example.com"
+acm_certificate_arn = "arn:aws:acm:ap-northeast-2:ACCOUNT_ID:certificate/CERTIFICATE_ID"
+
+# GitHub Actions (Optional, for CI/CD)
+github_actions_role_arn = "arn:aws:iam::ACCOUNT_ID:role/github-actions-role"
