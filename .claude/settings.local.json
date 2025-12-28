@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsof -ti :8080)",
+      "Bash(SPRING_PROFILES_ACTIVE=local ./gradlew bootRun)",
+      "Bash(tee /tmp/backend-log.txt)",
+      "Bash(xargs kill -9)",
+      "mcp__serena__find_symbol",
+      "Bash(tee /tmp/backend-langfuse.log)",
+      "Bash(gh pr merge 3 --squash --delete-branch)",
+      "Bash(git fetch --prune)",
+      "mcp__serena__list_dir",
+      "mcp__serena__activate_project",
+      "Bash(git add .claude/commands/jira-complete.md docs/)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: 작업 컨텍스트 및 의사결정 문서 관리 체계 추가\n\n- /jira-complete 명령어에 문서 업데이트 단계 추가\n- docs/ 폴더 구조 및 관리 가이드 생성\n- 4가지 문서 유형 정의 (ADR, Context, Specs, Operations)\n- 각 유형별 템플릿 및 작성 가이드 제공\n\nJIRA 티켓 완료 시 중요한 의사결정과 작업 컨텍스트를\n체계적으로 문서화하여 프로젝트 지식 관리 향상\n\n📁 변경 내역:\n- .claude/commands/jira-complete.md: 문서 업데이트 단계 추가\n- docs/README.md: 문서 관리 가이드\n- docs/decisions/: 기술적 의사결정 (ADR) 폴더\n- docs/context/: 작업 컨텍스트 폴더\n- docs/specs/: API/기능 명세 폴더\n- docs/operations/: 운영 가이드 폴더\n\n🤖 Generated with Claude Code (https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "mcp__atlassian__createJiraIssue",
+      "mcp__atlassian__transitionJiraIssue",
+      "Bash(git checkout develop)",
+      "Bash(git pull origin develop)",
+      "Bash(git checkout main)",
+      "Bash(git pull origin main)",
+      "Bash(git checkout -b feature/SCRUM-42-swagger-openapi-spec)",
+      "Bash(./gradlew clean build -x test)",
+      "Bash(git add backend/)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

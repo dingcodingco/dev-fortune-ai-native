@@ -1,0 +1,11 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+logging:
+  level:
+    com.devfortune.backend: INFO
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
