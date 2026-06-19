@@ -95,7 +95,7 @@ gradle wrapper
 {
   "status": "UP",
   "service": "dev-fortune-backend",
-  "timestamp": "2025-12-27T14:30:00",
+  "timestamp": "2026-12-27T14:30:00",
   "version": "0.0.1-SNAPSHOT"
 }
 ```

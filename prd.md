@@ -29,7 +29,7 @@ After: 개발자 공감 100% 운세 ("금요일 배포 23회 생존 예상")
 
 ### MVP 목표
 
-- **런칭 시점:** 2025년 12월 28일 라이브 코딩 (2시간 완성)
+- **런칭 시점:** 2026년 12월 28일 라이브 코딩 (2시간 완성)
 - **타겟 MAU:** 1,000명 (첫 2주)
 - **PMF 검증 기준:** 공유율 35%+, 완료율 80%+
 
@@ -222,6 +222,23 @@ AC5: Given 생성된 운세 메시지가 표시될 때
      Then 현실적이면서도 유머러스한 톤이 유지된다
 ```
 
+**6가지 아키타입 (실제 구현 — `Archetype` enum 기준):**
+
+`ArchetypeService`가 5개 질문(q1~q5) 답변 점수를 합산해 아래 6개 중 하나를 배정합니다.
+응답의 `archetype` 필드에는 enum의 `id`(케밥케이스 문자열)가, `archetypeName`/`archetypeDescription`에는 한국어 표기가 들어갑니다.
+
+| enum 상수 | id (`archetype`) | 표시 이름 (`archetypeName`) | 설명 |
+|-----------|------------------|------------------------------|------|
+| `BUG_HUNTER` | `bug-hunter` | 버그 헌터 | 버그를 찾는 데 탁월한 개발자 |
+| `PEACEFUL_DEV` | `peaceful-dev` | 평화주의 개발자 | 워라밸을 중시하는 개발자 |
+| `FIRE_FIGHTER` | `fire-fighter` | 소방관 | 긴급 상황에 강한 개발자 |
+| `TEAM_PLAYER` | `team-player` | 팀 플레이어 | 협업을 중시하는 개발자 |
+| `AI_NATIVE` | `ai-native` | AI 네이티브 | AI 도구를 적극 활용하는 개발자 |
+| `TRADITIONAL` | `traditional` | 전통주의자 | 검증된 방식을 선호하는 개발자 |
+
+> 친근한 별칭(예: "금요일 배포 생존자", "Vibe Coder")을 노출하고 싶다면, 위 6개 enum에 1:1로 매핑되는
+> 디스플레이 레이어로 추가하세요. 별도의 상충하는 아키타입 집합을 새로 만들지 않습니다.
+
 ---
 
 ### User Story 3: 운세 결과 Streaming UI
@@ -289,7 +306,10 @@ AC4: Given 공유 링크를 통해 접속한 새 사용자가 있을 때
 
 ---
 
-### User Story 5: 팀 비교 기능 (선택)
+### User Story 5: 팀 비교 기능 (Out of Scope — Phase 2)
+
+> **상태: 미구현 (Phase 2로 연기).** 현재 저장소에는 `teams`/`team_members` 테이블도,
+> 팀 관련 컨트롤러/엔드포인트도 존재하지 않습니다. 아래 명세는 향후 Phase 2 설계 초안으로만 남겨둡니다.
 
 ```
 As a 개발자
@@ -324,29 +344,33 @@ AC4: Given 팀 비교 결과가 표시될 때
 
 ## 🏗️ Technical Architecture (기술 아키텍처)
 
+> **참고:** 이 섹션은 실제 구현(as-built)에 맞춰 기술합니다. 프론트엔드(Next.js)와 백엔드(Spring Boot REST API)는 **분리된 별도 애플리케이션**이며, 백엔드가 직접 Anthropic Claude API를 호출하고 PostgreSQL에 저장합니다.
+
 ### Tech Stack
 
 ```
-Frontend:
-- Framework: Next.js 14 (App Router)
+Frontend (frontend/):
+- Framework: Next.js 16 (App Router)
 - Language: TypeScript
-- Styling: Tailwind CSS + shadcn/ui
+- Styling: Tailwind CSS
 - State: Zustand (경량 상태 관리)
-- AI SDK: Vercel AI SDK (Streaming)
 - Canvas: html2canvas (공유 카드 생성)
+- 백엔드 연동: REST 호출 (NEXT_PUBLIC_API_URL, 기본 http://localhost:8080/api)
 
-Backend:
-- Framework: Spring Boot 3.2 (Java 17)
-- Database: Supabase PostgreSQL
-- Authentication: Supabase Auth (소셜 로그인)
-- Storage: Supabase Storage (공유 이미지)
-- AI: Anthropic Claude 3.5 Haiku API
+Backend (backend/):
+- Framework: Spring Boot 3.2.12 (Java 17), Gradle
+- Web: spring-boot-starter-web + spring-boot-starter-webflux(WebClient)
+- 영속성: Spring Data JPA (Hibernate, PostgreSQL dialect)
+- 스키마 관리: JPA ddl-auto (dev=create-drop, prod=validate, 기본=update)
+  · db/migration/V1__Initial_Schema.sql 파일이 저장소에 포함되어 있으나,
+    현재 Flyway 의존성은 빌드에 포함되어 있지 않아 자동 실행되지 않음(Phase 2 도입 검토)
+- Database: PostgreSQL
+- AI: Anthropic Claude API (claude-3-5-haiku-20241022), Messages API 직접 호출
 
-Infrastructure:
-- Hosting: Vercel (Frontend + API Routes)
-- Database: Supabase (Managed PostgreSQL)
-- CDN: Vercel Edge Network
-- Monitoring: Vercel Analytics (기본)
+Infrastructure (terraform/, .github/):
+- 배포: AWS ECS(Fargate) + ALB + ECR, RDS(PostgreSQL), VPC (Terraform 모듈)
+- CI/CD: GitHub Actions
+- 환경: dev / staging / prod
 
 Optional (Phase 2):
 - Sentry (에러 트래킹)
@@ -356,214 +380,176 @@ Optional (Phase 2):
 ### System Architecture
 
 ```
-[Client - Next.js]
-      ↓
-[API Routes - Next.js]
-      ↓
-[Claude API] ← Streaming
-      ↓
-[Supabase]
-  ├─ Auth (소셜 로그인)
-  ├─ PostgreSQL (운세 저장)
-  └─ Storage (공유 이미지)
+[Client - Next.js (frontend/)]
+      │  REST (POST /api/fortune 등)
+      ▼
+[Backend - Spring Boot REST API (backend/)]
+  ├─ FortuneController → FortuneService
+  │     ├─ ArchetypeService (퀴즈 답변 → 아키타입 결정)
+  │     └─ ClaudeService    → [Anthropic Claude API]
+  └─ Spring Data JPA
+        ▼
+[PostgreSQL]
+  ├─ fortunes (운세 + 6개 카테고리 결과)
+  └─ quiz_answers (퀴즈 답변, fortunes FK)
 ```
 
 **아키텍처 선택 이유:**
 
-- Next.js API Routes: 별도 백엔드 없이 풀스택 구현 (2시간 제약)
-- Supabase: BaaS로 빠른 개발, 무료 티어 충분
-- Claude Haiku: 빠른 응답(1-2초), 저렴한 비용($0.25/MTok)
-- Vercel: Git push만으로 자동 배포
+- 분리된 Spring Boot 백엔드: 도메인 로직(아키타입 결정·운세 저장)을 Java로 명확히 관리, Next.js는 UI에 집중
+- JPA ddl-auto: 단일 데이터 모델을 코드(엔티티) 기준으로 관리, 2시간 라이브에서 마이그레이션 도구 셋업 생략
+- Claude Haiku: 빠른 응답(1-2초), 저렴한 비용
+- AWS ECS + Terraform: 프론트/백엔드 컨테이너를 IaC로 일관되게 배포
 
 ---
 
 ## 🔌 API Specifications (API 명세)
 
-### API 1: 운세 생성 (Core)
+> 모든 경로에는 서버 context-path `/api`가 적용됩니다 (`server.servlet.context-path: /api`).
+> 아래 명세는 실제 `FortuneController` / `HealthController` 구현 기준입니다.
+
+### API 1: 운세 생성 및 저장 (Core)
 
 ```
-POST /api/fortune/generate
+POST /api/fortune
 
-Request:
+설명: 퀴즈 답변을 받아 (1) 아키타입을 결정하고 (2) Claude API로 운세를 생성한 뒤
+      (3) PostgreSQL에 저장하고 (4) 생성된 운세를 응답으로 반환한다.
+      (스트리밍이 아닌 단일 JSON 응답)
+
+Request (FortuneRequest):
 {
   "answers": [
-    { "questionId": 1, "choice": "A" },
-    { "questionId": 2, "choice": "B" },
-    ...
-  ],
-  "name": "김개발",
-  "experience": "mid-level",
-  "primaryLanguage": "TypeScript"
+    { "questionId": "q1", "optionId": "opt1", "value": 3 },
+    { "questionId": "q2", "optionId": "opt2", "value": 2 },
+    { "questionId": "q3", "optionId": "opt1", "value": 4 },
+    { "questionId": "q4", "optionId": "opt3", "value": 1 },
+    { "questionId": "q5", "optionId": "opt1", "value": 4 }
+  ]
 }
 
-Response (Streaming):
+Response (FortuneResponse) — 아키타입 + 6개 카테고리:
 {
-  "archetype": {
-    "id": "friday-survivor",
-    "name": "금요일 배포 생존자",
-    "description": "세상이 불타도 git push하는 용감한 전사...",
-    "emoji": "⚠️"
-  },
-  "stats": {
-    "coffee": 847,
-    "bugsFound": 234,
-    "bugsCreated": 235,
-    "linesOfCode": 52847,
-    "fridayDeploys": { "survived": 12, "total": 23 },
-    "debugPhrase": 47,
-    "commits": 673,
-    "longestStreak": 37
-  },
-  "fortunes": {
-    "bug": {
-      "total": 234,
-      "production": 3,
-      "debugHours": 127,
-      "dangerDates": ["2026-03-15", "2026-06-23"],
-      "advice": "세미콜론을 두 번 확인하세요..."
-    },
-    "deploy": {
-      "fridayRisk": 87,
-      "safeTime": "화요일 오전 10시",
-      "hotfixCount": 23,
-      "advice": "금요일 오후 5시 merge 버튼..."
-    },
-    // ... 나머지 카테고리
-  },
-  "luckyItems": {
-    "coffee": "아메리카노 (샷 추가)",
-    "keyboard": "기계식 (청축)",
-    "commitMessage": "feat: 진짜 마지막",
-    "bgm": "Lo-fi Hip Hop Radio"
-  },
-  "advice": "이게 되네...? 라는 말을 들을 때가..."
-}
-
-Error Response:
-{
-  "error": "GENERATION_FAILED",
-  "message": "운세 생성 중 오류가 발생했습니다",
-  "retryAfter": 3
+  "archetype": "ai-native",
+  "archetypeName": "AI 네이티브",
+  "archetypeDescription": "AI 도구를 적극 활용하는 개발자",
+  "bugFortune":        { "totalBugs": 234, "productionBugs": 3,  "advice": "...", "memeMessage": "이게 왜 되지?" },
+  "overtimeFortune":   { "expectedCount": 12, "riskMonth": "3월", "advice": "...", "memeMessage": "..." },
+  "techStackFortune":  { "techToLearn": "TypeScript", "masteryPercentage": 70, "advice": "...", "memeMessage": "..." },
+  "codeReviewFortune": { "totalComments": 120, "lgtmProbability": 80, "advice": "...", "memeMessage": "LGTM (눈감고)" },
+  "gitHubFortune":     { "totalCommits": 673, "longestStreak": 37, "advice": "...", "memeMessage": "..." },
+  "meetingFortune":    { "totalMeetings": 90, "necessaryPercentage": 40, "advice": "...", "memeMessage": "..." }
 }
 ```
 
-### API 2: 운세 저장
+### API 2: 운세 조회
 
 ```
-POST /api/fortune/save
-
-Request:
-{
-  "fortuneData": { ... }, // 생성된 전체 운세
-  "userId": "uuid" // optional
-}
-
-Response:
-{
-  "fortuneId": "f7x9k2m",
-  "shareUrl": "https://devfortune.vercel.app/share/f7x9k2m",
-  "createdAt": "2026-01-01T00:00:00Z"
-}
+GET  /api/fortune/{id}                  # ID로 단일 운세 조회 (Fortune 엔티티 반환)
+GET  /api/fortune/archetype/{archetypeId}  # 아키타입 ID(bug-hunter 등)별 운세 목록
+GET  /api/fortune/health                # 운세 API 헬스체크 → "Fortune API is running"
 ```
 
-### API 3: 공유 카드 생성
+### API 3: 서비스 헬스체크
 
 ```
-POST /api/fortune/share-card
-
-Request:
-{
-  "fortuneId": "f7x9k2m"
-}
-
-Response:
-{
-  "imageUrl": "https://supabase-storage.../cards/f7x9k2m.png",
-  "expiresAt": "2026-01-08T00:00:00Z"
-}
+GET  /api/health        # { status: "UP", service, timestamp, version }
+GET  /api/health/ping   # "pong"
 ```
 
-### API 4: 팀 생성
-
-```
-POST /api/team/create
-
-Request:
-{
-  "teamName": "Backend Team",
-  "creatorFortuneId": "f7x9k2m"
-}
-
-Response:
-{
-  "teamId": "t3a8b9c",
-  "inviteUrl": "https://devfortune.vercel.app/team/t3a8b9c",
-  "inviteCode": "DEV2026"
-}
-```
+> **참고:** 별도의 운세 저장 엔드포인트(`/save`)는 없습니다 — 저장은 `POST /api/fortune` 내부에서 함께 처리됩니다.
+> 공유 카드 생성은 프론트엔드(html2canvas)에서 수행되며 서버 엔드포인트가 없습니다.
+> 팀 생성/조회 API는 현재 구현되어 있지 않습니다 (아래 User Story 5 및 Out of Scope 참조).
 
 ---
 
 ## 💾 Data Model (데이터 모델)
 
+> 실제 스키마는 JPA 엔티티(`Fortune`, `QuizAnswer`)로 정의되며, `db/migration/V1__Initial_Schema.sql`에
+> 동일한 PostgreSQL DDL이 포함되어 있습니다. 아래는 그 PostgreSQL DDL입니다 (PostgreSQL 문법:
+> 인덱스는 `CREATE INDEX`를 **별도 문장**으로 분리, MySQL식 인라인 `INDEX ...`를 쓰지 않습니다).
+
 ### Table: fortunes
 
-```sql
-CREATE TABLE fortunes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id), -- nullable
-  
-  -- 입력 데이터
-  answers JSONB NOT NULL, -- 퀴즈 답변
-  name VARCHAR(50),
-  experience VARCHAR(20), -- junior/mid/senior
-  primary_language VARCHAR(30),
-  
-  -- 생성 결과
-  archetype VARCHAR(50) NOT NULL,
-  stats JSONB NOT NULL,
-  fortunes JSONB NOT NULL,
-  lucky_items JSONB,
-  advice TEXT,
-  
-  -- 메타데이터
-  created_at TIMESTAMP DEFAULT NOW(),
-  shared_count INTEGER DEFAULT 0,
-  view_count INTEGER DEFAULT 0,
-  
-  -- 인덱스
-  INDEX idx_created (created_at DESC),
-  INDEX idx_archetype (archetype)
-);
-```
-
-### Table: teams
+운세 결과를 저장합니다. 6개 카테고리는 JSONB가 아니라 카테고리별 **평탄화된 컬럼**으로 저장됩니다.
 
 ```sql
-CREATE TABLE teams (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_name VARCHAR(100) NOT NULL,
-  invite_code VARCHAR(10) UNIQUE NOT NULL,
-  creator_id UUID REFERENCES auth.users(id),
-  
-  created_at TIMESTAMP DEFAULT NOW(),
-  member_count INTEGER DEFAULT 0,
-  
-  INDEX idx_invite_code (invite_code)
+CREATE TABLE IF NOT EXISTS fortunes (
+    id BIGSERIAL PRIMARY KEY,
+    archetype VARCHAR(50) NOT NULL,
+    archetype_name VARCHAR(100) NOT NULL,
+    archetype_description TEXT NOT NULL,
+
+    -- 버그 운세
+    bug_total_bugs INTEGER,
+    bug_production_bugs INTEGER,
+    bug_advice TEXT,
+    bug_meme_message VARCHAR(500),
+
+    -- 야근 운세
+    overtime_expected_count INTEGER,
+    overtime_risk_month VARCHAR(50),
+    overtime_advice TEXT,
+    overtime_meme_message VARCHAR(500),
+
+    -- 기술 스택 운세
+    tech_stack_to_learn VARCHAR(200),
+    tech_mastery_percentage INTEGER,
+    tech_advice TEXT,
+    tech_meme_message VARCHAR(500),
+
+    -- 코드 리뷰 운세
+    code_review_total_comments INTEGER,
+    code_review_lgtm_probability INTEGER,
+    code_review_advice TEXT,
+    code_review_meme_message VARCHAR(500),
+
+    -- GitHub 운세
+    github_total_commits INTEGER,
+    github_longest_streak INTEGER,
+    github_advice TEXT,
+    github_meme_message VARCHAR(500),
+
+    -- 회의 운세
+    meeting_total_meetings INTEGER,
+    meeting_necessary_percentage INTEGER,
+    meeting_advice TEXT,
+    meeting_meme_message VARCHAR(500),
+
+    -- 메타데이터
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_fortunes_archetype ON fortunes (archetype);
+CREATE INDEX idx_fortunes_created_at ON fortunes (created_at);
 ```
 
-### Table: team_members
+### Table: quiz_answers
+
+퀴즈 답변을 운세(`fortunes`)와 1:N으로 연결합니다.
 
 ```sql
-CREATE TABLE team_members (
-  team_id UUID REFERENCES teams(id),
-  fortune_id UUID REFERENCES fortunes(id),
-  joined_at TIMESTAMP DEFAULT NOW(),
-  
-  PRIMARY KEY (team_id, fortune_id)
+CREATE TABLE IF NOT EXISTS quiz_answers (
+    id BIGSERIAL PRIMARY KEY,
+    question_id VARCHAR(50) NOT NULL,
+    option_id VARCHAR(50) NOT NULL,
+    value INTEGER NOT NULL,
+    fortune_id BIGINT NOT NULL,
+
+    CONSTRAINT fk_fortune
+        FOREIGN KEY (fortune_id)
+        REFERENCES fortunes(id)
+        ON DELETE CASCADE
 );
+
+CREATE INDEX idx_quiz_answers_fortune_id ON quiz_answers (fortune_id);
 ```
+
+### Table: teams / team_members (Out of Scope — Phase 2)
+
+> **미구현.** 팀 비교 기능(User Story 5)은 Phase 2로 연기되어 있으며, 해당 테이블은 아직 만들어지지 않았습니다.
+> 향후 도입 시 위와 동일한 PostgreSQL 문법(인덱스는 별도 `CREATE INDEX` 문장)을 따릅니다.
 
 ---
 
@@ -660,17 +646,17 @@ Components (shadcn/ui):
 
 ### NFR-3: 확장성
 
+> as-built 인프라는 AWS ECS(Fargate) + ALB + RDS(PostgreSQL) (Terraform `dev/staging/prod`)입니다.
+> 아래 비용 수치는 초기 기획 단계의 추정치로, 실제 AWS 비용 모델과 다를 수 있습니다.
+
 ```
 MVP (0-1K users):
-- Vercel Free Tier
-- Supabase Free Tier
-- 비용: $0
+- AWS ECS Fargate (최소 태스크) + RDS(PostgreSQL) 소형 인스턴스
+- Claude API: 사용량 기반
 
 Growth (1K-10K users):
-- Vercel Pro ($20/월)
-- Supabase Pro ($25/월)
+- ECS 태스크 오토스케일링 + RDS 인스턴스 상향
 - Claude API ($50/월 예상)
-- 비용: $95/월
 ```
 
 ### NFR-4: 모니터링
@@ -790,13 +776,13 @@ Growth (1K-10K users):
 
 ```
 00:00 - 00:10 | 인트로 & 완성 데모
-00:10 - 00:30 | Next.js 프로젝트 생성 + Supabase 연동
+00:10 - 00:30 | Spring Boot 백엔드 + PostgreSQL(JPA) 연동
 00:30 - 00:50 | Claude API 연동 + Prompt Engineering
 00:50 - 01:00 | 휴식 + Q&A
 
 01:00 - 01:25 | 퀴즈 UI + Streaming 구현
 01:25 - 01:40 | 결과 화면 + 공유 기능
-01:40 - 01:50 | Vercel 배포 + 실제 테스트
+01:40 - 01:50 | AWS ECS 배포 (GitHub Actions) + 실제 테스트
 01:50 - 02:00 | 마무리 + GitHub 공개
 ```
 
@@ -878,18 +864,30 @@ AI 관련:
 ### C. 개발 환경 세팅
 
 ```
-Repository: https://github.com/yourname/dev-fortune-2026
+Repository: https://github.com/dingcodingco/dev-fortune-ai-native
 
-Quick Start:
-npm create next-app@latest dev-fortune
-cd dev-fortune
-npm install @anthropic-ai/sdk ai zustand
-npm install -D tailwindcss
+Quick Start (모노레포 — 백엔드 + 프론트엔드 분리):
 
-Environment Variables (.env.local):
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-ANTHROPIC_API_KEY=
+# Backend (Spring Boot)
+cd backend
+export ANTHROPIC_API_KEY=...        # Claude API 키
+export DATABASE_URL=jdbc:postgresql://localhost:5432/devfortune
+./gradlew bootRun                   # http://localhost:8080/api
+
+# Frontend (Next.js)
+cd frontend
+npm install
+npm run dev                          # http://localhost:3000
+
+Frontend env (frontend/.env.local):
+NEXT_PUBLIC_API_URL=http://localhost:8080/api   # 백엔드 REST 베이스 URL
+
+Backend env:
+ANTHROPIC_API_KEY=                   # Claude API 키 (필수)
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022  # 기본값
+DATABASE_URL=                        # PostgreSQL JDBC URL
+DATABASE_USERNAME= / DATABASE_PASSWORD=
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
 ---
